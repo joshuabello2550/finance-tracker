@@ -18,21 +18,15 @@ MONTH_COLUMNS = {
     7: "Y", 8: "AC", 9: "AG", 10: "AK", 11: "AO", 12: "AS"
 }
 
-# Valid categories for dropdown
-VALID_CATEGORIES = [
-    "Groceries", "Snacks/Eatingout", "Transportation", "Medical", "Laundry",
-    "Non-essential Miscellaneous", "Essential Miscellaneous", "Reimbursement Pending",
-    "Clothing/Shoes", "Housing", "Reimbursed", "Gift"
-]
-
 # Category keyword mapping (case-insensitive matching)
+# Note: Category names must match exactly what's in the sheet's dropdown
 CATEGORY_KEYWORDS = {
     "Groceries": [
         "WHOLE FOODS", "TRADER JOE", "MARKET BASKET", "STOP & SHOP",
         "STAR MARKET", "WEGMANS", "ALDI", "COSTCO", "H MART", "SHAWS",
         "GROCERY", "SUPERMARKET", "H-E-B", "KROGER"
     ],
-    "Snacks/Eatingout": [
+    "Snacks/Eating out": [
         "CHIPOTLE", "CAVA", "STARBUCKS", "DUNKIN", "MCDONALD", "BURGER",
         "PIZZA", "SUBWAY", "DOORDASH", "UBER EATS", "UBER   *EATS",
         "GRUBHUB", "SEAMLESS", "RESTAURANT", "CAFE", "COFFEE", "BAKERY",
@@ -50,7 +44,7 @@ CATEGORY_KEYWORDS = {
     "Laundry": [
         "CSC SERVICEWORKS", "LAUNDRY", "DRY CLEAN", "CLEANERS"
     ],
-    "Clothing/Shoes": [
+    "Clothing / Shoes": [
         "NIKE", "ADIDAS", "UNIQLO", "H&M", "ZARA", "GAP", "OLD NAVY",
         "NORDSTROM", "MACYS", "TJ MAXX", "MARSHALLS", "FOOTLOCKER", "DSW"
     ],
@@ -199,25 +193,6 @@ def group_transactions_by_month(transactions: list[dict]) -> dict[int, list[dict
     return dict(by_month)
 
 
-def insert_rows(service, spreadsheet_id: str, sheet_id: int, row_index: int, num_rows: int):
-    """Insert empty rows at the specified index."""
-    request = {
-        "insertDimension": {
-            "range": {
-                "sheetId": sheet_id,
-                "dimension": "ROWS",
-                "startIndex": row_index,
-                "endIndex": row_index + num_rows
-            },
-            "inheritFromBefore": True
-        }
-    }
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={"requests": [request]}
-    ).execute()
-
-
 def get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> int:
     """Get the sheet ID for a given sheet name."""
     spreadsheet = service.spreadsheets().get(
@@ -228,15 +203,9 @@ def get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> int:
     raise ValueError(f"Sheet '{sheet_name}' not found")
 
 
-def update_cells(service, spreadsheet_id: str, range_name: str, values: list[list]):
-    """Update cells with values."""
-    body = {"values": values}
-    service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=range_name,
-        valueInputOption="USER_ENTERED",
-        body=body
-    ).execute()
+def rows_to_tsv(rows: list[list]) -> str:
+    """Convert 2D array to tab-separated string."""
+    return "\n".join("\t".join(str(cell) for cell in row) for row in rows)
 
 
 def col_letter_to_index(col: str) -> int:
@@ -247,37 +216,60 @@ def col_letter_to_index(col: str) -> int:
     return result - 1
 
 
-def apply_formatting_and_validation(
-    service, spreadsheet_id: str, sheet_id: int,
-    start_col: str, row_start: int, num_rows: int
+def get_validation_rule_from_cell(service, spreadsheet_id: str, sheet_name: str, cell: str) -> dict | None:
+    """Fetch the data validation rule from an existing cell."""
+    try:
+        result = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            ranges=[f"{sheet_name}!{cell}"],
+            includeGridData=True
+        ).execute()
+
+        for sheet in result.get('sheets', []):
+            for data in sheet.get('data', []):
+                for row in data.get('rowData', []):
+                    for cell_data in row.get('values', []):
+                        validation = cell_data.get('dataValidation')
+                        if validation:
+                            return validation
+        return None
+    except HttpError as e:
+        print(f"Error fetching validation rule: {e}")
+        return None
+
+
+def paste_rows(
+    service, spreadsheet_id: str, sheet_id: int, sheet_name: str,
+    start_col: str, row_start: int, rows: list[list], source_validation_cell: str
 ):
-    """Apply non-bold formatting and category dropdown validation to inserted rows."""
+    """Paste data, apply non-bold formatting, and set validation - all in one batch."""
     col_start_index = col_letter_to_index(start_col)
     category_col_index = col_start_index + 3  # 4th column (Category)
+    num_rows = len(rows)
+
+    validation_rule = get_validation_rule_from_cell(
+        service, spreadsheet_id, sheet_name, source_validation_cell
+    )
 
     requests = [
-        # Set non-bold formatting for all 4 columns
+        # 1. Paste data
         {
-            "repeatCell": {
-                "range": {
+            "pasteData": {
+                "coordinate": {
                     "sheetId": sheet_id,
-                    "startRowIndex": row_start,
-                    "endRowIndex": row_start + num_rows,
-                    "startColumnIndex": col_start_index,
-                    "endColumnIndex": col_start_index + 4
+                    "rowIndex": row_start,
+                    "columnIndex": col_start_index
                 },
-                "cell": {
-                    "userEnteredFormat": {
-                        "textFormat": {
-                            "bold": False
-                        }
-                    }
-                },
-                "fields": "userEnteredFormat.textFormat.bold"
+                "data": rows_to_tsv(rows),
+                "type": "PASTE_NORMAL",
+                "delimiter": "\t"
             }
         },
-        # Set data validation dropdown for category column
-        {
+    ]
+
+    # 4. Set validation if we found a rule
+    if validation_rule:
+        requests.append({
             "setDataValidation": {
                 "range": {
                     "sheetId": sheet_id,
@@ -286,17 +278,9 @@ def apply_formatting_and_validation(
                     "startColumnIndex": category_col_index,
                     "endColumnIndex": category_col_index + 1
                 },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": [{"userEnteredValue": cat} for cat in VALID_CATEGORIES]
-                    },
-                    "showCustomUi": True,
-                    "strict": True
-                }
+                "rule": validation_rule
             }
-        }
-    ]
+        })
 
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -362,21 +346,17 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     insert_row = (last_expense_row +
                   1) if last_expense_row else (header_row + 1)
 
-    # Get sheet ID for row insertion
+    # Get sheet ID and source validation cell
     sheet_id = get_sheet_id(service, spreadsheet_id, sheet_name)
+    category_col = chr(ord(start_col[0]) + 3) if len(
+        start_col) == 1 else start_col[0] + chr(ord(start_col[1]) + 3)
+    source_validation_cell = f"{category_col}{header_row + 2}"
 
-    # Insert rows
-    print(f"  Inserting {len(new_rows)} rows at row {insert_row + 1}...")
-    insert_rows(service, spreadsheet_id, sheet_id, insert_row, len(new_rows))
-
-    # Write data to the new rows
-    write_range = f"{sheet_name}!{start_col}{insert_row + 1}:{end_col}{insert_row + len(new_rows)}"
-    update_cells(service, spreadsheet_id, write_range, new_rows)
-
-    # Apply formatting (non-bold) and category dropdown validation
-    apply_formatting_and_validation(
-        service, spreadsheet_id, sheet_id,
-        start_col, insert_row, len(new_rows)
+    # Paste data, apply formatting and validation in one batch
+    print(f"  Pasting {len(new_rows)} rows at row {insert_row + 1}...")
+    paste_rows(
+        service, spreadsheet_id, sheet_id, sheet_name,
+        start_col, insert_row, new_rows, source_validation_cell
     )
 
     print(f"  Successfully added {len(new_rows)} transactions")
@@ -398,18 +378,20 @@ def main(csv_path: str):
     # Group by month
     by_month = group_transactions_by_month(transactions)
     print("by_month: ", by_month)
-    print(f"Transactions span {len(by_month)} month(s): {sorted(by_month.keys())}")
+    print(
+        f"Transactions span {len(by_month)} month(s): {sorted(by_month.keys())}")
 
     # Initialize Google Sheets service
     service = get_sheets_service()
 
-    # # Process each month
-    # total_added = 0
-    # for month in sorted(by_month.keys()):
-    #     added = process_month(service, SPREADSHEET_ID, SHEET_NAME, month, by_month[month])
-    #     total_added += added
+    # Process each month
+    total_added = 0
+    for month in sorted(by_month.keys()):
+        added = process_month(service, SPREADSHEET_ID,
+                              SHEET_NAME, month, by_month[month])
+        total_added += added
 
-    # print(f"\n=== Done! Added {total_added} total transactions ===")
+    print(f"\n=== Done! Added {total_added} total transactions ===")
 
 
 if __name__ == "__main__":
