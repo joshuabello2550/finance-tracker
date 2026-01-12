@@ -42,12 +42,21 @@ function formatAmount(amount: number): string {
   return `$${Math.abs(amount).toFixed(2)}`
 }
 
+interface ImportResult {
+  total_added: number
+  total_skipped: number
+  months: { month: number; added: number; skipped: number }[]
+}
+
+const API_URL = 'http://localhost:8000'
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<ImportResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = async (f: File) => {
@@ -80,16 +89,38 @@ export default function App() {
     setFile(null)
     setTransactions([])
     setError(null)
+    setResult(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleSubmit = async () => {
-    if (!transactions.length) return
+    if (!file || !transactions.length) return
     setLoading(true)
-    // TODO: Connect to backend
-    await new Promise(r => setTimeout(r, 1000))
-    setLoading(false)
-    alert(`Ready to import ${transactions.length} transactions`)
+    setError(null)
+    setResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      console.log("formData: ", formData)
+      const res = await fetch(`${API_URL}/import`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Import failed')
+      }
+
+      const data: ImportResult = await res.json()
+      setResult(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -144,6 +175,13 @@ export default function App() {
         >
           {loading ? 'Processing...' : `Import ${transactions.length || ''} Transactions`}
         </button>
+
+        {result && (
+          <div className="success-msg">
+            <strong>Import Complete</strong>
+            <p>{result.total_added} added, {result.total_skipped} skipped</p>
+          </div>
+        )}
       </div>
 
       {transactions.length > 0 && (

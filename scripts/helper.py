@@ -1,8 +1,10 @@
 from datetime import datetime
+import io
+import csv
+
 import google.auth
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
-import csv
 
 load_dotenv()
 
@@ -30,20 +32,14 @@ def format_amount(amount: float) -> str:
     return f"${abs(amount):.2f}"
 
 
-def load_csv(file_path: str) -> list[dict]:
-    """Read CSV and return list of purchase transactions (negative amounts only)."""
+def parse_csv_content(content: str) -> list[dict]:
+    """Parse CSV content string and return purchase transactions (negative amounts only)."""
     transactions = []
+    reader = csv.DictReader(io.StringIO(content))
 
-    with open(file_path, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-
-        for row in reader:
-            amount = float(row['Amount'].replace('"', ''))
-
-            # Only keep purchases (negative amounts), skip payments
-            if amount >= 0:
-                continue
-
+    for row in reader:
+        amount = float(row['Amount'].replace('"', ''))
+        if amount < 0:
             transactions.append({
                 'date': row['Date'],
                 'name': row['Name'].strip(),
@@ -51,6 +47,12 @@ def load_csv(file_path: str) -> list[dict]:
             })
 
     return transactions
+
+
+def load_csv(file_path: str) -> list[dict]:
+    """Read CSV file and return list of purchase transactions (negative amounts only)."""
+    with open(file_path, 'r', newline='', encoding='utf-8') as f:
+        return parse_csv_content(f.read())
 
 
 # Month to column mapping (0-indexed): Jan=A, Feb=E, Mar=I, etc.

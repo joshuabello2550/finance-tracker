@@ -252,3 +252,24 @@ body {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+.success-msg {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--success-bg);
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.success-msg strong {
+  display: block;
+  color: #166534;
+  margin-bottom: 4px;
+}
+
+.success-msg p {
+  font-size: 14px;
+  color: #166534;
+  margin: 0;
+}

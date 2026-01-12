@@ -181,7 +181,6 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     # Fetch historical expenses from 2025 for context
     print(f"  Fetching historical expenses from 2025...")
     historical_expenses = fetch_historical_expenses(spreadsheet_id, "2025")
-    print("historical_expenses: ", historical_expenses)
     print(f"  Found {len(historical_expenses)} historical expense entries")
 
     # Categorize all transactions at once using Claude
@@ -212,12 +211,12 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
         start_col) == 1 else start_col[0] + chr(ord(start_col[1]) + 3)
     source_validation_cell = f"{category_col}{header_row + 2}"
 
-    # # Paste data, apply formatting and validation in one batch
-    # print(f"  Pasting {len(new_rows)} rows at row {insert_row + 1}...")
-    # paste_rows(
-    #     service, spreadsheet_id, sheet_id, sheet_name,
-    #     start_col, insert_row, new_rows, source_validation_cell
-    # )
+    # Paste data, apply formatting and validation in one batch
+    print(f"  Pasting {len(new_rows)} rows at row {insert_row + 1}...")
+    paste_rows(
+        service, spreadsheet_id, sheet_id, sheet_name,
+        start_col, insert_row, new_rows, source_validation_cell
+    )
 
     print(f"  Successfully added {len(new_rows)} transactions")
     return len(new_rows)
