@@ -1,19 +1,68 @@
 """Transaction categorization using Claude with enforced category enums."""
 
 import json
+from textwrap import dedent
 
 import anthropic
-import google.auth
-from dotenv import load_dotenv
-from googleapiclient.discovery import build
 
-load_dotenv()
+from helper import get_sheets_service
+
+# Manual name corrections - maps transaction patterns to preferred expense names
+# Add entries here when you notice the agent using incorrect names
+NAME_CORRECTIONS = {
+    "TST*6AM HEALTH": "Vending Machine",
+    # Add more as needed:
+    # "PATTERN": "Preferred Name",
+}
 
 
-def get_sheets_service():
-    """Initialize Google Sheets API service."""
-    creds, _ = google.auth.default()
-    return build("sheets", "v4", credentials=creds)
+def fetch_historical_expenses(spreadsheet_id: str, worksheet_name: str = "2025") -> list[dict]:
+    """Fetch historical expense entries (name + category) from previous year's sheet."""
+    service = get_sheets_service()
+
+    # Month columns: Jan=A:D, Feb=E:H, etc.
+    month_columns = {
+        1: "A:D", 2: "E:H", 3: "I:L", 4: "M:P", 5: "Q:T", 6: "U:X",
+        7: "Y:AB", 8: "AC:AF", 9: "AG:AJ", 10: "AK:AN", 11: "AO:AR", 12: "AS:AV"
+    }
+
+    historical = []
+
+    for month, col_range in month_columns.items():
+        try:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"{worksheet_name}!{col_range}"
+            ).execute()
+            values = result.get('values', [])
+
+            # Find expense section and extract entries
+            in_expense_section = False
+            for row in values:
+                if len(row) >= 3 and row[0] == "Date" and row[2] == "Expense":
+                    in_expense_section = True
+                    continue
+                if in_expense_section:
+                    if len(row) >= 1 and row[0] == "Total":
+                        break
+                    # Has name and category
+                    if len(row) >= 4 and row[2] and row[3]:
+                        historical.append({
+                            "expense_name": row[2],
+                            "category": row[3]
+                        })
+        except Exception:
+            continue  # Skip months that don't exist
+
+    # Deduplicate by expense_name, keeping first occurrence
+    seen = set()
+    unique = []
+    for entry in historical:
+        if entry["expense_name"] not in seen:
+            seen.add(entry["expense_name"])
+            unique.append(entry)
+
+    return unique
 
 
 def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
@@ -26,36 +75,30 @@ def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
         ranges=f"{worksheet_name}!D15",
     ).execute()
 
-    sheets = response.get("sheets", [])
-    if not sheets:
-        raise ValueError("No sheets found")
+    try:
+        values = response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["values"]
 
-    grid_data = sheets[0].get("data", [])
-    if not grid_data:
-        raise ValueError("No grid data found")
+        if response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["type"] != "ONE_OF_LIST":
+            raise ValueError("Cell D15 is not a dropdown")
 
-    row_data = grid_data[0].get("rowData", [])
-    if not row_data:
-        raise ValueError("No row data found")
-
-    cell_data = row_data[0].get("values", [])
-    if not cell_data:
-        raise ValueError("No cell data found")
-
-    data_validation = cell_data[0].get("dataValidation", {})
-    condition = data_validation.get("condition", {})
-
-    if condition.get("type") != "ONE_OF_LIST":
-        raise ValueError("Cell D15 is not a dropdown")
-
-    values = condition.get("values", [])
-    return [v.get("userEnteredValue", "") for v in values]
+        return [v.get("userEnteredValue", "") for v in values]
+    except (KeyError, IndexError, TypeError):
+        raise ValueError("Invalid response structure or missing dropdown data")
 
 
-def categorize(transactions: list[str], valid_categories: list[str]) -> list[dict]:
+def categorize(
+    transactions: list[str],
+    valid_categories: list[str],
+    historical_expenses: list[dict] | None = None,
+    name_corrections: dict[str, str] | None = None
+) -> list[dict]:
     """Categorize transactions using Claude with structured outputs."""
     if not transactions:
         return []
+
+    # Use module-level corrections if none provided
+    if name_corrections is None:
+        name_corrections = NAME_CORRECTIONS
 
     schema = {
         "type": "object",
@@ -78,17 +121,37 @@ def categorize(transactions: list[str], valid_categories: list[str]) -> list[dic
         "additionalProperties": False,
     }
 
-    prompt = f"""Categorize these transactions.
+    # Build context sections
+    historical_context = ""
+    if historical_expenses:
+        examples = historical_expenses[:50]  # Limit to 50 examples
+        historical_context = dedent(f"""
+            HISTORICAL EXAMPLES (use these as reference for naming and categorization):
+            {json.dumps(examples, indent=2)}
+        """)
 
-VALID CATEGORIES (must use exactly one):
-{json.dumps(valid_categories)}
+    corrections_context = ""
+    if name_corrections:
+        corrections_context = dedent(f"""
+            NAME CORRECTIONS (when you see these patterns, use the specified expense_name):
+            {json.dumps(name_corrections, indent=2)}
+        """)
 
-TRANSACTIONS:
-{json.dumps(transactions)}
+    prompt = dedent(f"""
+        Categorize these transactions.
 
-Return actual_name (exact original), expense_name (short readable name), and category.
+        VALID CATEGORIES (must use exactly one):
+        {json.dumps(valid_categories)}
+        {historical_context}{corrections_context}
+        TRANSACTIONS TO CATEGORIZE:
+        {json.dumps(transactions)}
 
-IMPORTANT: If you are unsure about the category for a transaction, use "NEED MANUAL ENTRY" instead of guessing."""
+        Return actual_name (exact original), expense_name (short readable name), and category.
+
+        IMPORTANT:
+        - Use the historical examples and name corrections to inform your naming
+        - If you are unsure about the category for a transaction, use "NEED MANUAL ENTRY" instead of guessing.
+    """)
 
     client = anthropic.Anthropic()
     response = client.beta.messages.create(

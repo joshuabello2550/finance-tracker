@@ -1,82 +1,13 @@
 from googleapiclient.errors import HttpError
-from googleapiclient.discovery import build
-import google.auth
-import csv
 import sys
-from datetime import datetime
 from collections import defaultdict
-from dotenv import load_dotenv
 
-from categorize_transactions import fetch_categories, categorize
+from categorize_transactions import fetch_categories, fetch_historical_expenses, categorize
+from helper import format_amount, format_date_short, get_column_range, get_sheets_service, load_csv, parse_date
 
-load_dotenv()
 
 SPREADSHEET_ID = "1R-LLdpkVxjewiRD6LNer7sUF_AtJfx1_b6G1VPddc9k"
 SHEET_NAME = "2026"
-
-# Month to column mapping (0-indexed): Jan=A, Feb=E, Mar=I, etc.
-MONTH_COLUMNS = {
-    1: "A", 2: "E", 3: "I", 4: "M", 5: "Q", 6: "U",
-    7: "Y", 8: "AC", 9: "AG", 10: "AK", 11: "AO", 12: "AS"
-}
-
-
-def get_column_range(month: int) -> tuple[str, str]:
-    """Get the 4-column range for a given month (1-12)."""
-    start_col = MONTH_COLUMNS[month]
-    # Calculate end column (start + 3)
-    if len(start_col) == 1:
-        end_col = chr(ord(start_col) + 3)
-    else:
-        # Handle two-letter columns (AA, AB, etc.)
-        end_col = start_col[0] + chr(ord(start_col[1]) + 3)
-    return start_col, end_col
-
-
-def parse_date(date_str: str) -> tuple[int, int, int]:
-    """Parse date string (YYYY-MM-DD) and return (year, month, day)."""
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
-    return dt.year, dt.month, dt.day
-
-
-def format_date_short(date_str: str) -> str:
-    """Convert YYYY-MM-DD to M/D format."""
-    _, month, day = parse_date(date_str)
-    return f"{month}/{day}"
-
-
-def format_amount(amount: float) -> str:
-    """Format amount as $X.XX (positive)."""
-    return f"${abs(amount):.2f}"
-
-
-def load_csv(file_path: str) -> list[dict]:
-    """Read CSV and return list of purchase transactions (negative amounts only)."""
-    transactions = []
-
-    with open(file_path, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-
-        for row in reader:
-            amount = float(row['Amount'].replace('"', ''))
-
-            # Only keep purchases (negative amounts), skip payments
-            if amount >= 0:
-                continue
-
-            transactions.append({
-                'date': row['Date'],
-                'name': row['Name'].strip(),
-                'amount': amount
-            })
-
-    return transactions
-
-
-def get_sheets_service():
-    """Initialize Google Sheets API service."""
-    creds, _ = google.auth.default()
-    return build("sheets", "v4", credentials=creds)
 
 
 def find_expense_section(values: list[list]) -> tuple[int, int]:
@@ -246,12 +177,19 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     print(f"  Fetching categories from sheet...")
     valid_categories = fetch_categories(spreadsheet_id, sheet_name)
     print(f"  Found {len(valid_categories)} valid categories")
-    print("valid_categories: ", valid_categories)
+
+    # Fetch historical expenses from 2025 for context
+    print(f"  Fetching historical expenses from 2025...")
+    historical_expenses = fetch_historical_expenses(spreadsheet_id, "2025")
+    print("historical_expenses: ", historical_expenses)
+    print(f"  Found {len(historical_expenses)} historical expense entries")
+
     # Categorize all transactions at once using Claude
     print(
         f"  Categorizing {len(new_transactions)} transactions with Claude...")
     transaction_names = [t['name'] for t in new_transactions]
-    categorized = categorize(transaction_names, valid_categories)
+    categorized = categorize(
+        transaction_names, valid_categories, historical_expenses)
     print("categorized: ", categorized)
 
     # Build rows with categorized results
@@ -299,7 +237,6 @@ def main(csv_path: str):
 
     # Group by month
     by_month = group_transactions_by_month(transactions)
-    print("by_month: ", by_month)
     print(
         f"Transactions span {len(by_month)} month(s): {sorted(by_month.keys())}")
 
