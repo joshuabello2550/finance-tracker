@@ -7,6 +7,8 @@ from datetime import datetime
 from collections import defaultdict
 from dotenv import load_dotenv
 
+from categorize_transactions import fetch_categories, categorize
+
 load_dotenv()
 
 SPREADSHEET_ID = "1R-LLdpkVxjewiRD6LNer7sUF_AtJfx1_b6G1VPddc9k"
@@ -16,49 +18,6 @@ SHEET_NAME = "2026"
 MONTH_COLUMNS = {
     1: "A", 2: "E", 3: "I", 4: "M", 5: "Q", 6: "U",
     7: "Y", 8: "AC", 9: "AG", 10: "AK", 11: "AO", 12: "AS"
-}
-
-# Category keyword mapping (case-insensitive matching)
-# Note: Category names must match exactly what's in the sheet's dropdown
-CATEGORY_KEYWORDS = {
-    "Groceries": [
-        "WHOLE FOODS", "TRADER JOE", "MARKET BASKET", "STOP & SHOP",
-        "STAR MARKET", "WEGMANS", "ALDI", "COSTCO", "H MART", "SHAWS",
-        "GROCERY", "SUPERMARKET", "H-E-B", "KROGER"
-    ],
-    "Snacks/Eating out": [
-        "CHIPOTLE", "CAVA", "STARBUCKS", "DUNKIN", "MCDONALD", "BURGER",
-        "PIZZA", "SUBWAY", "DOORDASH", "UBER EATS", "UBER   *EATS",
-        "GRUBHUB", "SEAMLESS", "RESTAURANT", "CAFE", "COFFEE", "BAKERY",
-        "TST*", "6AM HEALTH", "BAR", "PUB", "TAVERN", "CHICK-FIL-A"
-    ],
-    "Transportation": [
-        "LYFT", "MBTA", "CHARLIE", "TRANSIT", "PARKING", "TOLL",
-        "ZIPCAR", "SWA*", "SOUTHWEST", "AIRLINE", "FLIGHT",
-        "GAS", "SHELL", "EXXON", "MOBIL", "CHEVRON"
-    ],
-    "Medical": [
-        "CVS", "PHARMACY", "WALGREENS", "RITE AID", "HOSPITAL", "MEDICAL",
-        "DOCTOR", "CLINIC", "DENTAL", "OPTOMETRY"
-    ],
-    "Laundry": [
-        "CSC SERVICEWORKS", "LAUNDRY", "DRY CLEAN", "CLEANERS"
-    ],
-    "Clothing / Shoes": [
-        "NIKE", "ADIDAS", "UNIQLO", "H&M", "ZARA", "GAP", "OLD NAVY",
-        "NORDSTROM", "MACYS", "TJ MAXX", "MARSHALLS", "FOOTLOCKER", "DSW"
-    ],
-    "Housing": [
-        "RENT", "UTILITIES", "ELECTRIC", "WATER", "INTERNET", "COMCAST",
-        "VERIZON FIOS", "HOME DEPOT", "LOWES", "IKEA", "FURNITURE",
-        "GOOGLE WORKSPACE"
-    ],
-    "Essential Miscellaneous": [
-        "AMAZON", "OFFICE", "SUPPLIES"
-    ],
-    "Gift": [
-        "GIFT", "FLOWERS", "CARD"
-    ],
 }
 
 
@@ -72,22 +31,6 @@ def get_column_range(month: int) -> tuple[str, str]:
         # Handle two-letter columns (AA, AB, etc.)
         end_col = start_col[0] + chr(ord(start_col[1]) + 3)
     return start_col, end_col
-
-
-def categorize_transaction(name: str) -> str:
-    """Auto-categorize transaction based on merchant name keywords."""
-    name_upper = name.upper()
-
-    # Check for UBER but not UBER EATS (transportation vs food)
-    if "UBER" in name_upper and "EATS" not in name_upper:
-        return "Transportation"
-
-    for category, keywords in CATEGORY_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in name_upper:
-                return category
-
-    return "Non-essential Miscellaneous"
 
 
 def parse_date(date_str: str) -> tuple[int, int, int]:
@@ -216,43 +159,14 @@ def col_letter_to_index(col: str) -> int:
     return result - 1
 
 
-def get_validation_rule_from_cell(service, spreadsheet_id: str, sheet_name: str, cell: str) -> dict | None:
-    """Fetch the data validation rule from an existing cell."""
-    try:
-        result = service.spreadsheets().get(
-            spreadsheetId=spreadsheet_id,
-            ranges=[f"{sheet_name}!{cell}"],
-            includeGridData=True
-        ).execute()
-
-        for sheet in result.get('sheets', []):
-            for data in sheet.get('data', []):
-                for row in data.get('rowData', []):
-                    for cell_data in row.get('values', []):
-                        validation = cell_data.get('dataValidation')
-                        if validation:
-                            return validation
-        return None
-    except HttpError as e:
-        print(f"Error fetching validation rule: {e}")
-        return None
-
-
 def paste_rows(
     service, spreadsheet_id: str, sheet_id: int, sheet_name: str,
     start_col: str, row_start: int, rows: list[list], source_validation_cell: str
 ):
     """Paste data, apply non-bold formatting, and set validation - all in one batch."""
     col_start_index = col_letter_to_index(start_col)
-    category_col_index = col_start_index + 3  # 4th column (Category)
-    num_rows = len(rows)
-
-    validation_rule = get_validation_rule_from_cell(
-        service, spreadsheet_id, sheet_name, source_validation_cell
-    )
 
     requests = [
-        # 1. Paste data
         {
             "pasteData": {
                 "coordinate": {
@@ -266,21 +180,6 @@ def paste_rows(
             }
         },
     ]
-
-    # 4. Set validation if we found a rule
-    if validation_rule:
-        requests.append({
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": row_start,
-                    "endRowIndex": row_start + num_rows,
-                    "startColumnIndex": category_col_index,
-                    "endColumnIndex": category_col_index + 1
-                },
-                "rule": validation_rule
-            }
-        })
 
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -321,8 +220,8 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     existing = get_existing_expenses(values, header_row, last_expense_row)
     print(f"  Found {len(existing)} existing expenses")
 
-    # Filter duplicates and format new transactions
-    new_rows = []
+    # Filter duplicates first
+    new_transactions = []
     for txn in transactions:
         date_short = format_date_short(txn['date'])
         amount_fmt = format_amount(txn['amount'])
@@ -333,14 +232,37 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
                 f"  Skipping duplicate: {date_short} {amount_fmt} {txn['name'][:30]}")
             continue
 
-        category = categorize_transaction(txn['name'])
-        new_rows.append([date_short, amount_fmt, txn['name'], category])
-        print(
-            f"  Adding: {date_short} | {amount_fmt:>10} | {txn['name'][:35]:<35} | {category}")
+        new_transactions.append({
+            'date_short': date_short,
+            'amount_fmt': amount_fmt,
+            'name': txn['name']
+        })
 
-    if not new_rows:
+    if not new_transactions:
         print(f"  No new transactions to add for month {month}")
         return 0
+
+    # Fetch valid categories from sheet dropdown
+    print(f"  Fetching categories from sheet...")
+    valid_categories = fetch_categories(spreadsheet_id, sheet_name)
+    print(f"  Found {len(valid_categories)} valid categories")
+    print("valid_categories: ", valid_categories)
+    # Categorize all transactions at once using Claude
+    print(
+        f"  Categorizing {len(new_transactions)} transactions with Claude...")
+    transaction_names = [t['name'] for t in new_transactions]
+    categorized = categorize(transaction_names, valid_categories)
+    print("categorized: ", categorized)
+
+    # Build rows with categorized results
+    new_rows = []
+    for i, txn in enumerate(new_transactions):
+        category = categorized[i]['category']
+        expense_name = categorized[i]['expense_name']
+        new_rows.append(
+            [txn['date_short'], txn['amount_fmt'], expense_name, category])
+        print(
+            f"  Adding: {txn['date_short']} | {txn['amount_fmt']:>10} | {expense_name[:35]:<35} | {category}")
 
     # Calculate insert position (after last expense, or after header if no expenses)
     insert_row = (last_expense_row +
@@ -352,12 +274,12 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
         start_col) == 1 else start_col[0] + chr(ord(start_col[1]) + 3)
     source_validation_cell = f"{category_col}{header_row + 2}"
 
-    # Paste data, apply formatting and validation in one batch
-    print(f"  Pasting {len(new_rows)} rows at row {insert_row + 1}...")
-    paste_rows(
-        service, spreadsheet_id, sheet_id, sheet_name,
-        start_col, insert_row, new_rows, source_validation_cell
-    )
+    # # Paste data, apply formatting and validation in one batch
+    # print(f"  Pasting {len(new_rows)} rows at row {insert_row + 1}...")
+    # paste_rows(
+    #     service, spreadsheet_id, sheet_id, sheet_name,
+    #     start_col, insert_row, new_rows, source_validation_cell
+    # )
 
     print(f"  Successfully added {len(new_rows)} transactions")
     return len(new_rows)
