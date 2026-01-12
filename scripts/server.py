@@ -4,13 +4,8 @@ from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from helper import parse_csv_content, get_sheets_service
-from import_transactions import (
-    group_transactions_by_month,
-    process_month,
-    SPREADSHEET_ID,
-    SHEET_NAME,
-)
+from helper import parse_csv_content
+from import_transactions import process_all_transactions
 
 load_dotenv()
 
@@ -39,25 +34,7 @@ async def import_transactions_endpoint(file: UploadFile):
     try:
         content = (await file.read()).decode('utf-8')
         transactions = parse_csv_content(content)
-
-        if not transactions:
-            return {"total_added": 0, "months": []}
-
-        by_month = group_transactions_by_month(transactions)
-        service = get_sheets_service()
-
-        results = []
-        total_added = 0
-
-        for month in sorted(by_month.keys()):
-            added = process_month(service, SPREADSHEET_ID, SHEET_NAME, month, by_month[month])
-            results.append({"month": month, "added": added})
-            total_added += added
-
-        return {
-            "total_added": total_added,
-            "months": results
-        }
+        return process_all_transactions(transactions)
 
     except Exception as e:
         raise HTTPException(500, str(e))

@@ -44,8 +44,7 @@ function formatAmount(amount: number): string {
 
 interface ImportResult {
   total_added: number
-  total_skipped: number
-  months: { month: number; added: number; skipped: number }[]
+  results: { year: number; month: number; added: number }[]
 }
 
 const API_URL = 'http://localhost:8000'
@@ -179,7 +178,7 @@ export default function App() {
         {result && (
           <div className="success-msg">
             <strong>Import Complete</strong>
-            <p>{result.total_added} added, {result.total_skipped} skipped</p>
+            <p>{result.total_added} transactions added</p>
           </div>
         )}
       </div>

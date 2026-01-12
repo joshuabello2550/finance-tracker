@@ -7,7 +7,15 @@ from helper import format_amount, format_date_short, get_column_range, get_sheet
 
 
 SPREADSHEET_ID = "1R-LLdpkVxjewiRD6LNer7sUF_AtJfx1_b6G1VPddc9k"
-SHEET_NAME = "2026"
+
+
+def get_year_from_transactions(transactions: list[dict]) -> int:
+    """Extract the latest year from transactions."""
+    years = set()
+    for txn in transactions:
+        year, _, _ = parse_date(txn['date'])
+        years.add(year)
+    return max(years)
 
 
 def find_expense_section(values: list[list]) -> tuple[int, int]:
@@ -67,6 +75,18 @@ def group_transactions_by_month(transactions: list[dict]) -> dict[int, list[dict
     return dict(by_month)
 
 
+def group_transactions_by_year_and_month(transactions: list[dict]) -> dict[int, dict[int, list[dict]]]:
+    """Group transactions by year, then by month."""
+    by_year_month: dict[int, dict[int, list[dict]]
+                        ] = defaultdict(lambda: defaultdict(list))
+    for txn in transactions:
+        year, month, _ = parse_date(txn['date'])
+        by_year_month[year][month].append(txn)
+
+    # Convert to regular dicts
+    return {year: dict(months) for year, months in by_year_month.items()}
+
+
 def get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> int:
     """Get the sheet ID for a given sheet name."""
     spreadsheet = service.spreadsheets().get(
@@ -118,7 +138,7 @@ def paste_rows(
     ).execute()
 
 
-def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, transactions: list[dict]):
+def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, transactions: list[dict], historical_year: int):
     """Process transactions for a single month."""
     start_col, end_col = get_column_range(month)
     range_name = f"{sheet_name}!{start_col}:{end_col}"
@@ -178,9 +198,16 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     valid_categories = fetch_categories(spreadsheet_id, sheet_name)
     print(f"  Found {len(valid_categories)} valid categories")
 
-    # Fetch historical expenses from 2025 for context
-    print(f"  Fetching historical expenses from 2025...")
-    historical_expenses = fetch_historical_expenses(spreadsheet_id, "2025")
+    # Fetch historical expenses for context (try previous year, fall back to current)
+    print(f"  Fetching historical expenses from {historical_year}...")
+    try:
+        historical_expenses = fetch_historical_expenses(
+            spreadsheet_id, str(historical_year))
+    except Exception:
+        print(
+            f"  Sheet {historical_year} not found, using current year for historical context")
+        historical_expenses = fetch_historical_expenses(
+            spreadsheet_id, sheet_name)
     print(f"  Found {len(historical_expenses)} historical expense entries")
 
     # Categorize all transactions at once using Claude
@@ -222,11 +249,39 @@ def process_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
     return len(new_rows)
 
 
+def process_all_transactions(transactions: list[dict]) -> dict:
+    """Process all transactions, grouping by year and month.
+
+    Returns dict with total_added and results list.
+    """
+    if not transactions:
+        return {"total_added": 0, "results": []}
+
+    by_year_month = group_transactions_by_year_and_month(transactions)
+    service = get_sheets_service()
+
+    results = []
+    total_added = 0
+
+    for year in sorted(by_year_month.keys()):
+        print(f"\n---------------- Processing year {year} ----------------")
+        sheet_name = str(year)
+        historical_year = year - 1
+        months = by_year_month[year]
+
+        for month in sorted(months.keys()):
+            added = process_month(
+                service, SPREADSHEET_ID, sheet_name, month, months[month], historical_year)
+            results.append({"year": year, "month": month, "added": added})
+            total_added += added
+
+    return {"total_added": total_added, "results": results}
+
+
 def main(csv_path: str):
     """Main entry point."""
     print(f"Reading CSV: {csv_path}")
 
-    # Load transactions from CSV
     transactions = load_csv(csv_path)
     print(f"Found {len(transactions)} purchase transactions")
 
@@ -234,22 +289,8 @@ def main(csv_path: str):
         print("No purchase transactions found in CSV")
         return
 
-    # Group by month
-    by_month = group_transactions_by_month(transactions)
-    print(
-        f"Transactions span {len(by_month)} month(s): {sorted(by_month.keys())}")
-
-    # Initialize Google Sheets service
-    service = get_sheets_service()
-
-    # Process each month
-    total_added = 0
-    for month in sorted(by_month.keys()):
-        added = process_month(service, SPREADSHEET_ID,
-                              SHEET_NAME, month, by_month[month])
-        total_added += added
-
-    print(f"\n=== Done! Added {total_added} total transactions ===")
+    result = process_all_transactions(transactions)
+    print(f"\n=== Done! Added {result['total_added']} total transactions ===")
 
 
 if __name__ == "__main__":
