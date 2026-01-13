@@ -47,7 +47,7 @@ interface ImportResult {
   results: { year: number; month: number; added: number }[]
 }
 
-const API_URL = 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_BASE || '';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
@@ -102,8 +102,8 @@ export default function App() {
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log("formData: ", formData)
-      const res = await fetch(`${API_URL}/import`, {
+      console.log("API_URL: ", API_URL)
+      const res = await fetch(`${API_URL}/api/import`, {
         method: 'POST',
         body: formData,
       })

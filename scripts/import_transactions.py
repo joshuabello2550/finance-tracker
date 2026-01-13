@@ -5,8 +5,8 @@ from googleapiclient.errors import HttpError
 import sys
 from collections import defaultdict
 
-from categorize_transactions import fetch_categories, fetch_historical_expenses, categorize
-from helper import format_amount, format_date_short, get_column_range, get_sheets_service, load_csv, parse_date
+from scripts.categorize_transactions import fetch_categories, fetch_historical_expenses, categorize
+from scripts.helper import format_amount, format_date_short, get_column_range, get_sheets_service, load_csv, parse_date
 
 
 SPREADSHEET_ID = "1R-LLdpkVxjewiRD6LNer7sUF_AtJfx1_b6G1VPddc9k"

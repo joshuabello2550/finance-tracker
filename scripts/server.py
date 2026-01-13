@@ -4,8 +4,8 @@ from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from helper import parse_csv_content
-from import_transactions import process_all_transactions
+from scripts.helper import parse_csv_content
+from scripts.import_transactions import process_all_transactions
 
 load_dotenv()
 
@@ -43,8 +43,3 @@ async def import_transactions_endpoint(file: UploadFile):
 
     except Exception as e:
         raise HTTPException(500, str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
