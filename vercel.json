@@ -2,8 +2,8 @@
     "version": 2,
     "routes": [
         {
-            "source": "/api/(.*)",
-            "destination": "scripts/server.py"
+            "src": "/api/(.*)",
+            "dest": "scripts/server.py"
         }
     ]
 }
