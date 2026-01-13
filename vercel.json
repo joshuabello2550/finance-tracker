@@ -1,6 +1,6 @@
 {
     "version": 2,
-    "routes": [
+    "rewrites": [
         {
             "src": "/api/(.*)",
             "dest": "scripts/server.py"
