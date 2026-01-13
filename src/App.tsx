@@ -102,7 +102,6 @@ export default function App() {
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log("API_URL: ", API_URL)
       const res = await fetch(`${API_URL}/api/import`, {
         method: 'POST',
         body: formData,
