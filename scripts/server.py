@@ -10,7 +10,7 @@ import os
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(root_path="/api")
 
 origins = []
 
