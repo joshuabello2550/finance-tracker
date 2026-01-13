@@ -1,3 +1,6 @@
+from typing import Any
+
+
 from googleapiclient.errors import HttpError
 import sys
 from collections import defaultdict
@@ -65,16 +68,6 @@ def get_existing_expenses(values: list[list], header_row: int | None, last_row: 
     return existing
 
 
-def group_transactions_by_month(transactions: list[dict]) -> dict[int, list[dict]]:
-    """Group transactions by month number."""
-    by_month = defaultdict(list)
-    for txn in transactions:
-        _, month, _ = parse_date(txn['date'])
-        by_month[month].append(txn)
-
-    return dict(by_month)
-
-
 def group_transactions_by_year_and_month(transactions: list[dict]) -> dict[int, dict[int, list[dict]]]:
     """Group transactions by year, then by month."""
     by_year_month: dict[int, dict[int, list[dict]]
@@ -84,7 +77,7 @@ def group_transactions_by_year_and_month(transactions: list[dict]) -> dict[int, 
         by_year_month[year][month].append(txn)
 
     # Convert to regular dicts
-    return {year: dict(months) for year, months in by_year_month.items()}
+    return {year: dict[int, list[dict]](months) for year, months in by_year_month.items()}
 
 
 def get_sheet_id(service, spreadsheet_id: str, sheet_name: str) -> int:
