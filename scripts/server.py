@@ -6,17 +6,21 @@ from dotenv import load_dotenv
 
 from scripts.helper import parse_csv_content
 from scripts.import_transactions import process_all_transactions
+import os
 
 load_dotenv()
 
 app = FastAPI()
 
+origins = []
+
+if os.getenv("ENV") == "development":
+    origins = ["http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        # Replace with your actual domain
-        "https://finance-tracker-git-main-joshua-bellos-projects.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
