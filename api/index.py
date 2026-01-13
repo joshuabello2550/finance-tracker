@@ -4,8 +4,8 @@ from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from scripts.helper import parse_csv_content
-from scripts.import_transactions import process_all_transactions
+from .utils.helper import parse_csv_content
+from .utils.import_transactions import process_all_transactions
 import os
 
 load_dotenv()
