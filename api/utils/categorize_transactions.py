@@ -5,7 +5,7 @@ from textwrap import dedent
 
 import anthropic
 
-from helper import get_sheets_service
+from .helper import get_sheets_service
 
 # Manual name corrections - maps transaction patterns to preferred expense names
 # Add entries here when you notice the agent using incorrect names
