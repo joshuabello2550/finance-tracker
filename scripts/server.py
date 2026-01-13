@@ -20,17 +20,17 @@ app.add_middleware(
 )
 
 
-@app.get("/api")
+@app.get("/")
 def read_root():
     return {"Python": "on Vercel"}
 
 
-@app.get("/api/health")
+@app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.post("/api/import")
+@app.post("/import")
 async def import_transactions_endpoint(file: UploadFile):
     """Import transactions from uploaded CSV."""
     if not file.filename or not file.filename.endswith('.csv'):
