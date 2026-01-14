@@ -125,10 +125,6 @@ def google_callback(code: str = None, error: str = None):
             "user": json.dumps(user_data)
         }
 
-        # Also add refresh token for backend use (user can copy from URL or console)
-        if credentials.refresh_token:
-            params["refresh_token"] = credentials.refresh_token
-
         query_string = urllib.parse.urlencode(params)
         redirect_url = f"{frontend_url}/?{query_string}"
 

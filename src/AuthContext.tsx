@@ -76,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const accessToken = params.get('access_token')
       const expiry = params.get('expiry')
       const userJson = params.get('user')
-      const refreshToken = params.get('refresh_token')
 
       if (!accessToken || !userJson) {
         throw new Error('Missing authentication data')
@@ -89,14 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('google_user_info', JSON.stringify(userData))
       if (expiry) {
         localStorage.setItem('google_token_expiry', expiry)
-      }
-
-      // Log refresh token for backend use
-      if (refreshToken) {
-        console.log('🔑 GOOGLE_REFRESH_TOKEN for backend (.env file):')
-        console.log(refreshToken)
-        console.log('\nAdd this to your .env file:')
-        console.log(`GOOGLE_REFRESH_TOKEN="${refreshToken}"`)
       }
 
       setUser(userData)
