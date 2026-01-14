@@ -32,6 +32,91 @@ body {
   flex-direction: column;
   align-items: center;
   padding: 80px 24px;
+  padding-top: 120px;
+}
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  z-index: 1000;
+}
+
+.topbar-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.topbar-logo {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.topbar-auth {
+  display: flex;
+  align-items: center;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.topbar-email {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.topbar-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--card);
+  color: var(--text);
+}
+
+.topbar-btn.signin {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.topbar-btn.signin:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.topbar-btn.signout:hover {
+  border-color: var(--error);
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.loading-screen {
+  text-align: center;
+  padding: 100px 20px;
+  font-size: 16px;
+  color: var(--text-muted);
 }
 
 .header {

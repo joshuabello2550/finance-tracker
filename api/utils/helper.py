@@ -1,17 +1,53 @@
 from datetime import datetime
 import io
 import csv
+import os
 
 import google.auth
+from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
 load_dotenv()
 
 
+def get_oauth_credentials():
+    """Get OAuth credentials from stored tokens."""
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    if not all([refresh_token, client_id, client_secret]):
+        raise ValueError(
+            "Missing OAuth credentials. Please set GOOGLE_REFRESH_TOKEN, "
+            "GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET environment variables."
+        )
+
+    creds = Credentials(
+        None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "openid"
+        ]
+    )
+    return creds
+
+
 def get_sheets_service():
     """Initialize Google Sheets API service."""
-    creds, _ = google.auth.default()
+    # if os.getenv("ENV") == "development":
+    #     # Development: Use service account (credentials.json)
+    #     creds, _ = google.auth.default()
+    # else:
+    #     # Production: Use OAuth tokens
+    creds = get_oauth_credentials()
+
     return build("sheets", "v4", credentials=creds)
 
 

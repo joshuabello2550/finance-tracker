@@ -1,4 +1,6 @@
 import { useState, useRef, type DragEvent, type ChangeEvent } from 'react'
+import { useAuth } from './AuthContext'
+import TopBar from './TopBar'
 
 interface Transaction {
   date: string
@@ -50,6 +52,7 @@ interface ImportResult {
 const API_URL = import.meta.env.VITE_API_BASE || '';
 
 export default function App() {
+  const { isAuthenticated, signIn, isLoading: authLoading } = useAuth()
   const [file, setFile] = useState<File | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [dragActive, setDragActive] = useState(false)
@@ -94,6 +97,14 @@ export default function App() {
 
   const handleSubmit = async () => {
     if (!file || !transactions.length) return
+
+    // Check authentication first
+    if (!isAuthenticated) {
+      setError('Please sign in with Google to import transactions')
+      signIn()
+      return
+    }
+
     setLoading(true)
     setError(null)
     setResult(null)
@@ -121,10 +132,20 @@ export default function App() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <div className="app">
+        <TopBar />
+        <div className="loading-screen">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
+      <TopBar />
       <header className="header">
-        <h1>Finance Tracker</h1>
+        <h1>Transaction Importer</h1>
         <p>Upload your statement to categorize transactions</p>
       </header>
 
@@ -140,7 +161,7 @@ export default function App() {
             <path d="M12 16V4m0 0l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
           </svg>
           <div className="dropzone-text">Drop CSV file or click to browse</div>
-          <div className="dropzone-hint">Supports Chase, Amex, and other exports</div>
+          <div className="dropzone-hint">Supports Elan Financial Services only</div>
         </div>
 
         <input
