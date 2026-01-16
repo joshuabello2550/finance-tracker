@@ -109,3 +109,29 @@ def get_column_range(month: int) -> tuple[str, str]:
         # Handle two-letter columns (AA, AB, etc.)
         end_col = start_col[0] + chr(ord(start_col[1]) + 3)
     return start_col, end_col
+
+
+def find_expense_section(values: list[list]) -> tuple[int, int]:
+    """
+    Find the Expense section in the column data.
+    Returns (header_row_index, last_expense_row_index).
+    """
+    expense_header_row = None
+    last_expense_row = None
+
+    for i, row in enumerate(values):
+        # Look for the Expense header row
+        if len(row) >= 3 and row[0] == "Date" and row[2] == "Expense":
+            expense_header_row = i
+            continue
+
+        # If we found the header, look for expense entries
+        if expense_header_row is not None and i > expense_header_row:
+            # Check if this row has data (date in first column)
+            if len(row) >= 1 and row[0] and row[0] != "Total":
+                last_expense_row = i
+            # If we hit "Total" or empty section, stop
+            elif len(row) >= 1 and row[0] == "Total":
+                break
+
+    return expense_header_row, last_expense_row

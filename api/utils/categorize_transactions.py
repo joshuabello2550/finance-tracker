@@ -5,8 +5,7 @@ from textwrap import dedent
 
 import anthropic
 
-from .helper import get_sheets_service
-from .import_transactions import find_expense_section
+from .helper import get_sheets_service, find_expense_section
 
 
 # Manual name corrections - maps transaction patterns to preferred expense names

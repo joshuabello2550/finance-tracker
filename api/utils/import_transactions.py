@@ -5,7 +5,7 @@ import sys
 from collections import defaultdict
 
 from .categorize_transactions import fetch_categories, fetch_historical_expenses, categorize
-from .helper import format_amount, format_date_short, get_column_range, get_sheets_service, load_csv, parse_date
+from .helper import format_amount, format_date_short, get_column_range, get_sheets_service, load_csv, parse_date, find_expense_section
 
 
 SPREADSHEET_ID = "1R-LLdpkVxjewiRD6LNer7sUF_AtJfx1_b6G1VPddc9k"
@@ -18,32 +18,6 @@ def get_year_from_transactions(transactions: list[dict]) -> int:
         year, _, _ = parse_date(txn['date'])
         years.add(year)
     return max(years)
-
-
-def find_expense_section(values: list[list]) -> tuple[int, int]:
-    """
-    Find the Expense section in the column data.
-    Returns (header_row_index, last_expense_row_index).
-    """
-    expense_header_row = None
-    last_expense_row = None
-
-    for i, row in enumerate(values):
-        # Look for the Expense header row
-        if len(row) >= 3 and row[0] == "Date" and row[2] == "Expense":
-            expense_header_row = i
-            continue
-
-        # If we found the header, look for expense entries
-        if expense_header_row is not None and i > expense_header_row:
-            # Check if this row has data (date in first column)
-            if len(row) >= 1 and row[0] and row[0] != "Total":
-                last_expense_row = i
-            # If we hit "Total" or empty section, stop
-            elif len(row) >= 1 and row[0] == "Total":
-                break
-
-    return expense_header_row, last_expense_row
 
 
 def get_existing_expenses(values: list[list], header_row: int | None, last_row: int | None) -> set[tuple]:
