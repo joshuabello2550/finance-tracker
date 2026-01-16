@@ -72,7 +72,7 @@ def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
     response = service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
         includeGridData=True,
-        ranges=f"{worksheet_name}!D15",
+        ranges=f"{worksheet_name}!D:D",
     ).execute()
 
     try:
