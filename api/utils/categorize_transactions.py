@@ -76,6 +76,18 @@ def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
     ).execute()
 
     try:
+        print('1: ', response["sheets"][0])
+        print('2: ', response["sheets"][0]["data"][0])
+        print('3: ', response["sheets"][0]["data"][0]["rowData"][0])
+        print('4: ', response["sheets"][0]["data"][0]
+              ["rowData"][0]["values"][0]["dataValidation"])
+        print('5: ', response["sheets"][0]["data"][0]["rowData"]
+              [0]["values"][0]["dataValidation"]["condition"])
+        print('6: ', response["sheets"][0]["data"][0]["rowData"][0]
+              ["values"][0]["dataValidation"]["condition"]["values"])
+        print('7: ', response["sheets"][0]["data"]
+              [0]["rowData"][0]["values"][0])
+
         values = response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["values"]
 
         if response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["type"] != "ONE_OF_LIST":

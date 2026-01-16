@@ -55,7 +55,6 @@ def get_oauth_flow():
             "redirect_uris": [redirect_uri]
         }
     }
-    print("redirect_uri: ", redirect_uri)
 
     flow = Flow.from_client_config(
         client_config,
