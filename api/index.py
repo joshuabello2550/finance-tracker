@@ -17,10 +17,13 @@ load_dotenv()
 
 app = FastAPI(root_path="/api")
 
+backend_url = os.getenv("BACKEND_URL")
+frontend_url = os.getenv("FRONTEND_URL")
+
 origins = []
 
 if os.getenv("ENV") == "development":
-    origins = ["http://localhost:5173"]
+    origins = [frontend_url]
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,21 +44,22 @@ SCOPES = [
 
 def get_oauth_flow():
     """Create OAuth flow instance."""
+    redirect_uri = f"{backend_url}/api/auth/callback"
+
     client_config = {
         "web": {
             "client_id": os.getenv("GOOGLE_CLIENT_ID"),
             "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8000/api/auth/callback")]
+            "redirect_uris": [redirect_uri]
         }
     }
 
     flow = Flow.from_client_config(
         client_config,
         scopes=SCOPES,
-        redirect_uri=os.getenv("OAUTH_REDIRECT_URI",
-                               "http://localhost:8000/api/auth/callback")
+        redirect_uri=redirect_uri
     )
     return flow
 
@@ -84,8 +88,6 @@ def google_callback(code: str = None, error: str = None):
     import urllib.parse
 
     # Determine frontend URL based on environment
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-
     if error:
         # Redirect to frontend with error
         return RedirectResponse(f"{frontend_url}/?auth_error={urllib.parse.quote(error)}")
