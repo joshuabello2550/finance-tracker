@@ -6,6 +6,8 @@ from textwrap import dedent
 import anthropic
 
 from .helper import get_sheets_service
+from .import_transactions import find_expense_section
+
 
 # Manual name corrections - maps transaction patterns to preferred expense names
 # Add entries here when you notice the agent using incorrect names
@@ -66,13 +68,23 @@ def fetch_historical_expenses(spreadsheet_id: str, worksheet_name: str = "2025")
 
 
 def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
-    """Fetch valid categories from cell D15's data validation dropdown."""
+    """Fetch valid categories from the expense dropdown in column D."""
     service = get_sheets_service()
+
+    values_response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{worksheet_name}!A:D",
+    ).execute()
+    values = values_response.get("values", [])
+    header_row, _ = find_expense_section(values)
+
+    category_row = header_row + 2
+    range_name = f"{worksheet_name}!D{category_row}:D{category_row}"
 
     response = service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
         includeGridData=True,
-        ranges=f"{worksheet_name}!D:D",
+        ranges=range_name,
     ).execute()
 
     try:
@@ -91,7 +103,7 @@ def fetch_categories(spreadsheet_id: str, worksheet_name: str) -> list[str]:
         values = response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["values"]
 
         if response["sheets"][0]["data"][0]["rowData"][0]["values"][0]["dataValidation"]["condition"]["type"] != "ONE_OF_LIST":
-            raise ValueError("Cell D15 is not a dropdown")
+            raise ValueError(f"Cell {range_name} is not a dropdown")
 
         return [v.get("userEnteredValue", "") for v in values]
     except (KeyError, IndexError, TypeError):
