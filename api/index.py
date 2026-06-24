@@ -3,14 +3,13 @@
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from google_auth_oauthlib.flow import Flow
-from google.auth.transport import requests as google_requests
-from google.oauth2.credentials import Credentials
 import json
 
 from .utils.helper import parse_csv_content
-from .utils.import_transactions import process_all_transactions
+from .utils.import_transactions import preview_all_transactions, commit_all_previews
 import os
 
 load_dotenv()
@@ -138,27 +137,8 @@ def google_callback(code: str = None, error: str = None):
 
 @app.get("/auth/status")
 def auth_status():
-    """Check authentication status."""
-    env = os.getenv("ENV", "production")
-
-    if env == "development":
-        return {
-            "authenticated": True,
-            "method": "service_account",
-            "message": "Using credentials.json"
-        }
-
-    has_oauth = all([
-        os.getenv("GOOGLE_CLIENT_ID"),
-        os.getenv("GOOGLE_CLIENT_SECRET"),
-        os.getenv("GOOGLE_REFRESH_TOKEN")
-    ])
-
-    return {
-        "authenticated": has_oauth,
-        "method": "oauth" if has_oauth else "none",
-        "message": "OAuth configured" if has_oauth else "OAuth not configured"
-    }
+    """Sheets I/O uses a service account; user sign-in is separate."""
+    return {"authenticated": True, "method": "service_account"}
 
 
 @app.get("/health")
@@ -166,16 +146,28 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/import")
-async def import_transactions_endpoint(file: UploadFile):
-    """Import transactions from uploaded CSV."""
+@app.post("/import/preview")
+async def import_preview_endpoint(file: UploadFile):
+    """Parse CSV, classify, and return preview (no writes)."""
     if not file.filename or not file.filename.endswith('.csv'):
         raise HTTPException(400, "File must be a CSV")
 
     try:
         content = (await file.read()).decode('utf-8')
         transactions = parse_csv_content(content)
-        return process_all_transactions(transactions)
+        return preview_all_transactions(transactions)
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
+
+class CommitRequest(BaseModel):
+    previews: list[dict]
+
+
+@app.post("/import/commit")
+async def import_commit_endpoint(body: CommitRequest):
+    """Write user-approved preview rows to the sheet."""
+    try:
+        return commit_all_previews(body.previews)
     except Exception as e:
         raise HTTPException(500, str(e))

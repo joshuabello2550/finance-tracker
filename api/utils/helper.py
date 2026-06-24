@@ -1,52 +1,32 @@
 from datetime import datetime
+from pathlib import Path
 import io
 import csv
+import json
 import os
 
-import google.auth
-from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
 load_dotenv()
 
-
-def get_oauth_credentials():
-    """Get OAuth credentials from stored tokens."""
-    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-    client_id = os.getenv("GOOGLE_CLIENT_ID")
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-
-    if not all([refresh_token, client_id, client_secret]):
-        raise ValueError(
-            "Missing OAuth credentials. Please set GOOGLE_REFRESH_TOKEN, "
-            "GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET environment variables."
-        )
-
-    creds = Credentials(
-        None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/userinfo.email",
-            "https://www.googleapis.com/auth/userinfo.profile",
-            "openid"
-        ]
-    )
-    return creds
+SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
 def get_sheets_service():
-    """Initialize Google Sheets API service."""
-    # if os.getenv("ENV") == "development":
-    #     # Development: Use service account (credentials.json)
-    #     creds, _ = google.auth.default()
-    # else:
-    #     # Production: Use OAuth tokens
-    creds = get_oauth_credentials()
+    """Initialize Google Sheets API service using a service account.
+
+    Loads credentials from GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON env var, for
+    Vercel) when set, otherwise from credentials.json at the project root.
+    """
+    sa_json_env = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if sa_json_env:
+        info = json.loads(sa_json_env)
+        creds = Credentials.from_service_account_info(info, scopes=SHEETS_SCOPES)
+    else:
+        creds_path = Path(__file__).resolve().parents[2] / "credentials.json"
+        creds = Credentials.from_service_account_file(str(creds_path), scopes=SHEETS_SCOPES)
 
     return build("sheets", "v4", credentials=creds)
 
@@ -64,29 +44,29 @@ def format_date_short(date_str: str) -> str:
 
 
 def format_amount(amount: float) -> str:
-    """Format amount as $X.XX (positive)."""
-    return f"${abs(amount):.2f}"
+    """Format amount as $X,XXX.XX (positive, with thousands separator)."""
+    return f"${abs(amount):,.2f}"
 
 
 def parse_csv_content(content: str) -> list[dict]:
-    """Parse CSV content string and return purchase transactions (negative amounts only)."""
+    """Parse CSV content string and return all transactions (both debits and credits)."""
     transactions = []
     reader = csv.DictReader(io.StringIO(content))
 
     for row in reader:
         amount = float(row['Amount'].replace('"', ''))
-        if amount < 0:
-            transactions.append({
-                'date': row['Date'],
-                'name': row['Name'].strip(),
-                'amount': amount
-            })
+        transactions.append({
+            'date': row['Date'],
+            'name': row['Name'].strip(),
+            'amount': amount,
+            'txn_type': row.get('Transaction', '').strip().upper(),
+        })
 
     return transactions
 
 
 def load_csv(file_path: str) -> list[dict]:
-    """Read CSV file and return list of purchase transactions (negative amounts only)."""
+    """Read CSV file and return all transactions."""
     with open(file_path, 'r', newline='', encoding='utf-8') as f:
         return parse_csv_content(f.read())
 
