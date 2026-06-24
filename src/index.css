@@ -260,7 +260,7 @@ body {
 
 .preview {
   width: 100%;
-  max-width: 640px;
+  max-width: 1000px;
   margin-top: 48px;
 }
 
@@ -295,6 +295,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .preview-table th {
