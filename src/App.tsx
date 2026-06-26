@@ -189,7 +189,16 @@ export default function App() {
         category: 'NEED MANUAL ENTRY',
         status: 'needs_manual',
       }
-      return { ...p, rows: [restored, ...p.rows] }
+      // Insert in ascending date_short order so sheet writes stay chronological.
+      const key = (d: string) => {
+        const [m, dd] = d.split('/').map(Number)
+        return m * 100 + dd
+      }
+      const restoredKey = key(restored.date_short)
+      const idx = p.rows.findIndex(r => key(r.date_short) > restoredKey)
+      const insertAt = idx === -1 ? p.rows.length : idx
+      const rows = [...p.rows.slice(0, insertAt), restored, ...p.rows.slice(insertAt)]
+      return { ...p, rows }
     })
     setPreviews(next)
     setRefundsPaired(rp => rp.filter((_, i) => i !== pairIdx))
@@ -456,7 +465,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {p.rows.map((r, ri) => {
+                  {p.rows.map((r, ri) => [r, ri] as const).reverse().map(([r, ri]) => {
                     if (r.status === 'duplicate' && !showDupes) return null
                     return (
                     <tr

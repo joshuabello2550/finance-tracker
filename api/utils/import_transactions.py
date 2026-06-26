@@ -189,10 +189,12 @@ def preview_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
 
     existing = get_existing_expenses(values, header_row, last_expense_row)
 
-    transactions = sorted(transactions, key=lambda t: t['date'], reverse=True)
+    # Sort ascending (earliest -> latest) so commits write oldest rows first
+    # to the sheet. Frontend reverses for display.
+    transactions = sorted(transactions, key=lambda t: t['date'])
 
-    new_txns = []
-    duplicates = []
+    ordered_rows: list[dict] = []
+    new_entries: list[dict] = []
     for txn in transactions:
         date_short = format_date_short(txn['date'])
         amount_fmt = format_amount(txn['amount'])
@@ -200,29 +202,24 @@ def preview_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
             'date_short': date_short,
             'amount_fmt': amount_fmt,
             'raw_name': txn['name'],
+            'expense_name': '',
+            'category': '',
+            'status': 'duplicate' if (date_short, amount_fmt) in existing else 'new',
         }
-        if (date_short, amount_fmt) in existing:
-            duplicates.append({**entry, 'status': 'duplicate', 'expense_name': '', 'category': ''})
-        else:
-            new_txns.append(entry)
+        ordered_rows.append(entry)
+        if entry['status'] != 'duplicate':
+            new_entries.append(entry)
 
     valid_categories = fetch_categories(spreadsheet_id, sheet_name)
 
-    classified_rows = []
-    if new_txns:
+    if new_entries:
         historical = fetch_historical_expenses(spreadsheet_id, sheet_name)
-        names = [t['raw_name'] for t in new_txns]
+        names = [t['raw_name'] for t in new_entries]
         categorized = categorize(names, valid_categories, historical)
-
-        for txn, cat in zip(new_txns, categorized):
-            classified_rows.append({
-                'date_short': txn['date_short'],
-                'amount_fmt': txn['amount_fmt'],
-                'raw_name': txn['raw_name'],
-                'expense_name': cat['expense_name'],
-                'category': cat['category'],
-                'status': 'needs_manual' if cat['category'] == 'NEED MANUAL ENTRY' else 'new',
-            })
+        for entry, cat in zip(new_entries, categorized):
+            entry['expense_name'] = cat['expense_name']
+            entry['category'] = cat['category']
+            entry['status'] = 'needs_manual' if cat['category'] == 'NEED MANUAL ENTRY' else 'new'
 
     insert_row = (last_expense_row + 1) if last_expense_row else (header_row + 1)
 
@@ -236,7 +233,7 @@ def preview_month(service, spreadsheet_id: str, sheet_name: str, month: int, tra
         'start_col': start_col,
         'insert_row': insert_row,
         'categories': valid_categories,
-        'rows': classified_rows + duplicates,
+        'rows': ordered_rows,
         'sheet_refund_warnings': sheet_refund_warnings,
     }
 
